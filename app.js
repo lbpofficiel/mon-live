@@ -1,12 +1,33 @@
 // ===== CONFIGURATION =====
-const ADMIN_PASSWORD = "Foot1234!";   // ← ton mot de passe
-const HOST_ID = "mon-live-host-lb";   // ID fixe (ne change pas)
+const ADMIN_PASSWORD = "Foot1234!";
+const ROOM_ID = "mon-live-room-v2";
 
-const peer = new Peer(HOST_ID, {
-  debug: 1
+const peer = new Peer({
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject"
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443",
+        username: "openrelayproject",
+        credential: "openrelayproject"
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject"
+      }
+    ]
+  }
 });
 
 let role = "viewer";
+let hostPeerId = null;
 let screenStream = null;
 let viewerConnections = new Map();
 let viewerCount = 0;
@@ -38,47 +59,41 @@ const updateCount = () => {
   if ($("adminCount")) $("adminCount").textContent = `${viewerCount} / 10`;
 };
 
-peer.on("open", (id) => {
-  console.log("Mon ID:", id);
+peer.on("open", id => {
+  console.log("Mon Peer ID:", id);
+});
 
-  // Si on est le host (ID fixe)
-  if (id === HOST_ID) {
-    role = "host";
+peer.on("connection", conn => {
+  if (role !== "host") return;
+
+  if (viewerConnections.size >= 10) {
+    conn.on("open", () => conn.send({ type: "full" }));
+    setTimeout(() => conn.close(), 800);
+    return;
   }
 
-  peer.on("connection", (conn) => {
-    if (role !== "host") return;
+  viewerConnections.set(conn.peer, conn);
+  viewerCount = viewerConnections.size;
+  updateCount();
 
-    if (viewerConnections.size >= 10) {
-      conn.on("open", () => conn.send({ type: "full" }));
-      setTimeout(() => conn.close(), 800);
-      return;
-    }
+  conn.on("data", data => {
+    if (!data || data.type !== "chat") return;
+    const name = (data.name || "Invité").slice(0, 18);
+    const text = (data.text || "").slice(0, 250);
+    broadcast({ type: "chat", name, text });
+    addMessage(name, text);
+  });
 
-    viewerConnections.set(conn.peer, conn);
+  conn.on("close", () => {
+    viewerConnections.delete(conn.peer);
     viewerCount = viewerConnections.size;
     updateCount();
-
-    conn.on("data", (data) => {
-      if (!data || data.type !== "chat") return;
-      const name = (data.name || "Invité").slice(0, 18);
-      const text = (data.text || "").slice(0, 250);
-      broadcast({ type: "chat", name, text });
-      addMessage(name, text);
-    });
-
-    conn.on("close", () => {
-      viewerConnections.delete(conn.peer);
-      viewerCount = viewerConnections.size;
-      updateCount();
-    });
-
-    // Si on est déjà en direct, on envoie le flux
-    if (screenStream) {
-      peer.call(conn.peer, screenStream);
-      conn.send({ type: "live", count: viewerCount });
-    }
   });
+
+  if (screenStream) {
+    peer.call(conn.peer, screenStream);
+    conn.send({ type: "live", count: viewerCount });
+  }
 });
 
 function broadcast(data) {
@@ -89,14 +104,22 @@ function broadcast(data) {
 
 async function becomeHost() {
   role = "host";
+  hostPeerId = peer.id;
   setLive(true);
   if ($("adminStatus")) $("adminStatus").textContent = "LIVE";
+
+  // Copie automatique du lien
+  const link = location.origin + location.pathname + "?host=" + encodeURIComponent(hostPeerId);
+  try {
+    await navigator.clipboard.writeText(link);
+    console.log("Lien copié:", link);
+  } catch (e) {}
 }
 
 $("startBtn").onclick = async () => {
   try {
     screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
+      video: { cursor: "always" },
       audio: true
     });
 
@@ -104,7 +127,6 @@ $("startBtn").onclick = async () => {
 
     screenStream.getVideoTracks()[0].addEventListener("ended", stopLive);
 
-    // Appeler tous les spectateurs déjà connectés
     for (const [id] of viewerConnections) {
       peer.call(id, screenStream);
     }
@@ -149,9 +171,10 @@ $("clearChatBtn").onclick = () => {
   broadcast({ type: "clear" });
 };
 
-// === Côté spectateur ===
-function joinAsViewer() {
-  const conn = peer.connect(HOST_ID, { reliable: true });
+function joinHost(id) {
+  hostPeerId = id;
+  role = "viewer";
+  const conn = peer.connect(id, { reliable: true });
   hostConn = conn;
 
   conn.on("open", () => {
@@ -159,7 +182,7 @@ function joinAsViewer() {
     conn.send({ type: "hello" });
   });
 
-  conn.on("data", (data) => {
+  conn.on("data", data => {
     if (data.type === "full") {
       alert("Le direct est complet (10/10).");
       conn.close();
@@ -183,23 +206,24 @@ function joinAsViewer() {
   });
 }
 
-peer.on("call", (call) => {
+peer.on("call", call => {
   call.answer();
-  call.on("stream", (stream) => {
+  call.on("stream", stream => {
     $("remoteVideo").srcObject = stream;
     setLive(true);
   });
 });
 
-// Au chargement : on essaie de rejoindre le host
-peer.on("open", () => {
-  // Si on n'est pas le host, on rejoint
-  if (peer.id !== HOST_ID) {
-    joinAsViewer();
-  }
-});
+const params = new URLSearchParams(location.search);
+const advertisedHost = params.get("host");
 
-$("chatForm").onsubmit = (e) => {
+if (advertisedHost) {
+  joinHost(advertisedHost);
+} else {
+  setLive(false);
+}
+
+$("chatForm").onsubmit = e => {
   e.preventDefault();
   if (!hostConn || hostConn.open === false) return;
   const name = $("nameInput").value.trim() || "Invité";
