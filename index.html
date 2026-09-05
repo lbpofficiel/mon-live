@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mon Live</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="dot"></span> MON LIVE</div>
+  <div id="status" class="status offline">● HORS LIGNE</div>
+</header>
+
+<main class="layout">
+  <section class="video-card">
+    <div class="video-wrap">
+      <video id="remoteVideo" autoplay playsinline controls></video>
+      <div id="offline" class="offline-screen">
+        <div class="big-dot">●</div>
+        <h1>Pas de direct</h1>
+        <p>Le direct n'est pas lancé pour le moment.</p>
+      </div>
+    </div>
+    <div class="under-video">
+      <div>
+        <h2>Mon Live</h2>
+        <span id="viewerCount">0 / 10 spectateurs</span>
+      </div>
+      <button id="adminOpen" class="ghost">⚙ Admin</button>
+    </div>
+  </section>
+
+  <aside class="chat-card">
+    <div class="chat-head"><b>💬 Chat</b><span id="chatState">En attente</span></div>
+    <div id="messages" class="messages"></div>
+    <form id="chatForm" class="chat-form">
+      <input id="nameInput" maxlength="18" placeholder="Ton pseudo" required>
+      <div class="send-row">
+        <input id="messageInput" maxlength="250" placeholder="Écrire un message..." autocomplete="off" required>
+        <button>➤</button>
+      </div>
+    </form>
+  </aside>
+</main>
+
+<div id="adminModal" class="modal hidden">
+  <div class="modal-box">
+    <button class="close" id="adminClose">×</button>
+    <h2>👑 Administration</h2>
+    <div id="loginArea">
+      <p>Entre ton mot de passe administrateur.</p>
+      <input id="adminPassword" type="password" placeholder="Mot de passe">
+      <button id="loginBtn" class="primary">Se connecter</button>
+      <p id="loginError" class="error"></p>
+    </div>
+    <div id="adminArea" class="hidden">
+      <div class="admin-grid">
+        <div><small>État</small><strong id="adminStatus">HORS LIGNE</strong></div>
+        <div><small>Spectateurs</small><strong id="adminCount">0 / 10</strong></div>
+      </div>
+      <button id="startBtn" class="primary">🖥️ Partager mon écran</button>
+      <button id="stopBtn" class="danger">⛔ Arrêter le direct</button>
+      <button id="clearChatBtn" class="ghost full">🧹 Vider le chat</button>
+      <p class="hint">Le partage d'écran est demandé par ton navigateur. Choisis « Écran entier » pour partager tout ton écran.</p>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
